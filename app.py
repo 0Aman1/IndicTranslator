@@ -274,11 +274,17 @@ col1, col2, col3 = st.columns([2, 2, 1])
 with col1:
     target_language = st.selectbox(
         "Target Language",
-        options=["en", "hi", "ta"],
+        options=["en", "hi", "ta", "mr", "gu", "pa", "kn", "ml", "bn"],
         format_func=lambda x: {
             "en": "English",
             "hi": "Hindi (हिन्दी)",
-            "ta": "Tamil (தமிழ்)"
+            "ta": "Tamil (தமிழ்)",
+            "mr": "Marathi (मराठी)",
+            "gu": "Gujarati (ગુજરાતી)",
+            "pa": "Punjabi (ਪੰਜਾਬੀ)",
+            "kn": "Kannada (ಕನ್ನಡ)",
+            "ml": "Malayalam (മലയാളം)",
+            "bn": "Bengali (বাংলা)"
         }[x],
         help="Select target language for translation"
     )
@@ -299,7 +305,7 @@ st.subheader("Text Input")
 input_text = st.text_area(
     "Enter text for analysis:",
     height=150,
-    placeholder="Enter text in English, Hindi, Tamil, Hinglish, or Tanglish..."
+    placeholder="Enter text in English, Hindi, Tamil, Marathi, Gujarati, Punjabi, Kannada, Malayalam, Bengali, or transliterated forms..."
 )
 
 # System capabilities showcase
@@ -308,7 +314,7 @@ with st.expander("🚀 System Capabilities", expanded=False):
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
         <div class="result-card" style="text-align: center; padding: 1rem;">
             <h4>🌍 Language Detection</h4>
-            <p>Auto-detect Hinglish, Tanglish, English, Hindi, Tamil</p>
+            <p>Auto-detect 9+ languages: English, Hindi, Tamil, Marathi, Gujarati, Punjabi, Kannada, Malayalam, Bengali</p>
         </div>
         <div class="result-card" style="text-align: center; padding: 1rem;">
             <h4>😊 Sentiment Analysis</h4>
@@ -354,7 +360,13 @@ if st.button("🔍 Analyze Text", type="primary", use_container_width=True):
                         lang_names = {
                             'en': '🇬🇧 English',
                             'hi': '🇮🇳 Hindi',
-                            'ta': '🇮🇳 Tamil'
+                            'ta': '🇮🇳 Tamil',
+                            'mr': '🇮🇳 Marathi',
+                            'gu': '🇮🇳 Gujarati',
+                            'pa': '🇮🇳 Punjabi',
+                            'kn': '🇮🇳 Kannada',
+                            'ml': '🇮🇳 Malayalam',
+                            'bn': '🇮🇳 Bengali'
                         }
                         
                         st.markdown(f'<div class="lang-badge">{lang_names.get(detected_lang, detected_lang)}</div>', unsafe_allow_html=True)
