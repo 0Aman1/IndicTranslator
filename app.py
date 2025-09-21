@@ -305,7 +305,7 @@ st.subheader("Text Input")
 input_text = st.text_area(
     "Enter text for analysis:",
     height=150,
-    placeholder="Enter text in English, Hindi, Tamil, Marathi, Gujarati, Punjabi, Kannada, Malayalam, Bengali, or transliterated forms..."
+    placeholder="Enter text in English, Hindi, Tamil, Hinglish, or Tanglish..."
 )
 
 # System capabilities showcase
