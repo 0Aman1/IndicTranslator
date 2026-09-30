@@ -6,12 +6,13 @@ A plug-and-play system using pretrained models from HuggingFace.
 
 import json
 import logging
-from typing import Dict, List, Optional, Tuple
+import re
+from typing import Dict, List, Optional
 import warnings
 warnings.filterwarnings("ignore")
 
 from langdetect import detect
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 from deep_translator import GoogleTranslator
 
@@ -22,7 +23,7 @@ try:
     INDIC_AVAILABLE = True
 except ImportError:
     INDIC_AVAILABLE = False
-    logger.warning("indic-transliteration not available, romanization disabled")
+    logging.warning("indic-transliteration not available, romanization disabled")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ class SentimentAnalyzer:
         self.tokenizers = {}
         self.model_mapping = {
             'en': 'cardiffnlp/twitter-roberta-base-sentiment-latest',
-            'hi': 'cardiffnlp/twitter-roberta-base-sentiment-latest',  # Use multilingual model
+            'hi': 'cardiffnlp/twitter-roberta-base-sentiment-latest',
             'ta': 'cardiffnlp/twitter-roberta-base-sentiment-latest',
             'te': 'cardiffnlp/twitter-roberta-base-sentiment-latest',
             'ml': 'cardiffnlp/twitter-roberta-base-sentiment-latest',
@@ -80,7 +81,6 @@ class SentimentAnalyzer:
             logger.info(f"Successfully loaded sentiment model for {language}")
         except Exception as e:
             logger.error(f"Failed to load sentiment model for {language}: {e}")
-            # Fallback to English model
             if language != 'en':
                 self.load_model('en')
     
@@ -126,7 +126,6 @@ class TranslatorModule:
     def translate_text(self, text: str, source_lang: str, target_lang: str) -> str:
         """Translate text using deep-translator API."""
         try:
-            # Ensure source lang is recognized by deep_translator
             sl = 'auto' if source_lang == 'en' else source_lang
             translated_text = GoogleTranslator(source=sl, target=target_lang).translate(text)
             
@@ -137,6 +136,95 @@ class TranslatorModule:
         except Exception as e:
             logger.error(f"Translation failed: {e}")
             return f"[{text}] (Translation error)"
+
+class TransliterationDetector:
+    """Detects and converts English-keyboard transliteration to native scripts"""
+    
+    @staticmethod
+    def detect_language_from_transliteration(text: str) -> Optional[str]:
+        """Detect if text is transliterated from a native language"""
+        text_lower = text.lower().strip()
+        
+        # Extract exact words to prevent partial matching 
+        words = set(re.findall(r'\b[a-z]+\b', text_lower))
+        
+        # Hindi patterns - prioritize common Hinglish words
+        hindi_indicators = {
+            'hai', 'tha', 'thi', 'the', 'raha', 'rahi', 'rahe', 'gaya', 'gayi', 'gaye',
+            'mujhe', 'tujhe', 'apna', 'mera', 'tera', 'kya', 'kyu', 'kyun', 'kaise',
+            'aaj', 'kal', 'sab', 'kuch', 'acha', 'bura', 'pyar', 'dost', 'ghar',
+            'zindagi', 'waqt', 'din', 'raat', 'subah', 'shaam', 'khana', 'pani',
+            'peene', 'ja', 'rha', 'hu', 'main', 'mai', 'hoon', 'hun', 'tum', 'aap',
+            'kaha', 'kahan', 'kab', 'kaun', 'kisko', 'kisne', 'mujhse', 'tumse',
+            'dil', 'dimaag', 'soch', 'baat', 'kar', 'karo', 'karna', 'kiya'
+        }
+        
+        # Tamil patterns  
+        tamil_indicators = {
+            'naan', 'en', 'un', 'avan', 'aval', 'avanga', 'idhu', 'adhu', 'enna',
+            'eppadi', 'irukku', 'irundha', 'vandha', 'poren', 'varan', 'sollu',
+            'romba', 'nalla', 'ketta', 'kadhal', 'thozhan', 'thozhi', 'veedu',
+            'kaadhal', 'kaalam', 'naal', 'iravu', 'kaalai', 'maalai', 'saapadu',
+            'thanni', 'evvalavu', 'neraya', 'kammiya', 'chinna', 'periya', 'puthusu',
+            'pazhasu', 'azhagu', 'veyyil', 'kulir', 'inippu', 'uppu'
+        }
+        
+        # Score counting: EXACT MATCH ONLY
+        hindi_score = sum(2 for w in words if w in hindi_indicators)
+        tamil_score = sum(2 for w in words if w in tamil_indicators)
+        
+        # Check endings safely using actual words
+        if words:
+            last_word = text_lower.split()[-1]
+            last_word = re.sub(r'[^a-z]', '', last_word)
+            
+            hindi_endings = {'hai', 'tha', 'thi', 'the', 'raha', 'rahi', 'rahe', 'gaya', 'gayi', 'gaye', 'hu', 'hun', 'hoon'}
+            tamil_endings = {'irukku', 'poren', 'vandha', 'sollu', 'romba'}
+            
+            if last_word in hindi_endings:
+                hindi_score += 4
+            if last_word in tamil_endings:
+                tamil_score += 3
+        
+        # Determine language based on highest score (Require a stronger threshold of 4)
+        if hindi_score > tamil_score and hindi_score >= 4:
+            return 'hi'
+        elif tamil_score > hindi_score and tamil_score >= 4:
+            return 'ta'
+            
+        return None
+
+    @staticmethod
+    def convert_to_native(text: str, detected_lang: str) -> str:
+        """Convert English transliteration to native script"""
+        if not INDIC_AVAILABLE:
+            return text
+            
+        try:
+            if detected_lang == 'hi':
+                return transliterate(text, sanscript.ITRANS, sanscript.DEVANAGARI)
+            elif detected_lang == 'ta':
+                return transliterate(text, sanscript.ITRANS, sanscript.TAMIL)
+            elif detected_lang == 'te':
+                return transliterate(text, sanscript.ITRANS, sanscript.TELUGU)
+            elif detected_lang == 'ml':
+                return transliterate(text, sanscript.ITRANS, sanscript.MALAYALAM)
+            elif detected_lang == 'kn':
+                return transliterate(text, sanscript.ITRANS, sanscript.KANNADA)
+            elif detected_lang == 'bn':
+                return transliterate(text, sanscript.ITRANS, sanscript.BENGALI)
+            elif detected_lang == 'gu':
+                return transliterate(text, sanscript.ITRANS, sanscript.GUJARATI)
+            elif detected_lang == 'mr':
+                return transliterate(text, sanscript.ITRANS, sanscript.DEVANAGARI)
+            elif detected_lang == 'pa':
+                return transliterate(text, sanscript.ITRANS, sanscript.GURMUKHI)
+            else:
+                return text
+        except Exception as e:
+            logger.warning(f"Transliteration failed: {e}")
+            return text
+
 class RomanizerModule:
     """Romanization module using indic-transliteration."""
     
@@ -233,7 +321,7 @@ class MultilingualNLPSystem:
             input_transliteration = TransliterationDetector.convert_to_native(text, transliterated_lang)
         
         return {
-            "original_text": text,  # Original input
+            "original_text": text,  
             "detected_language": source_language,
             "native_script": original_text if transliterated_lang else text,
             "native_script_romanized": original_romanized,
@@ -265,156 +353,3 @@ if __name__ == "__main__":
         with open(args.output, 'w', encoding='utf-8') as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
         print(f"Results saved to {args.output}")
-
-
-import re
-from typing import Dict, List, Optional, Tuple
-import requests
-import json
-import logging
-from datetime import datetime
-
-try:
-    from indic_transliteration import sanscript
-    from indic_transliteration.sanscript import transliterate
-    INDIC_TRANSLITERATION_AVAILABLE = True
-except ImportError:
-    INDIC_TRANSLITERATION_AVAILABLE = False
-    print("Warning: indic-transliteration not available. Install with: pip install indic-transliteration")
-
-try:
-    from indic_transliteration.sanscript import SchemeMap, SCHEMES
-    INDIC_ROMANIZATION_AVAILABLE = True
-except ImportError:
-    INDIC_ROMANIZATION_AVAILABLE = False
-
-# Add transliteration detection patterns
-class TransliterationDetector:
-    """Detects and converts English-keyboard transliteration to native scripts"""
-    
-    @staticmethod
-    def detect_language_from_transliteration(text: str) -> Optional[str]:
-        """Detect if text is transliterated from a native language"""
-        text_lower = text.lower().strip()
-        
-        # More specific Hindi patterns - prioritize common Hinglish words
-        hindi_indicators = [
-            'hai', 'tha', 'thi', 'the', 'raha', 'rahi', 'rahe', 'gaya', 'gayi', 'gaye',
-            'mujhe', 'tujhe', 'apna', 'mera', 'tera', 'kya', 'kyu', 'kyun', 'kaise',
-            'aaj', 'kal', 'sab', 'kuch', 'acha', 'bura', 'pyar', 'dost', 'ghar',
-            'zindagi', 'waqt', 'din', 'raat', 'subah', 'shaam', 'khana', 'pani',
-            'peene', 'ja', 'rha', 'hu', 'main', 'mai', 'hoon', 'hun', 'tum', 'aap',
-            'kaha', 'kahan', 'kab', 'kaun', 'kisko', 'kisne', 'mujhse', 'tumse',
-            'dil', 'dimaag', 'soch', 'baat', 'baat', 'kar', 'karo', 'karna', 'kiya'
-        ]
-        
-        # More specific Tamil patterns  
-        tamil_indicators = [
-            'naan', 'en', 'un', 'avan', 'aval', 'avanga', 'idhu', 'adhu', 'enna',
-            'eppadi', 'irukku', 'irundha', 'vandha', 'poren', 'varan', 'sollu',
-            'romba', 'nalla', 'ketta', 'kadhal', 'thozhan', 'thozhi', 'veedu',
-            'kaadhal', 'kaalam', 'naal', 'iravu', 'kaalai', 'maalai', 'saapadu',
-            'thanni', 'evvalavu', 'neraya', 'kammiya', 'chinna', 'periya', 'puthusu',
-            'pazhasu', 'azhagu', 'veyyil', 'kulir', 'inippu', 'uppu'
-        ]
-        
-        # Score counting - give higher weight to Hindi indicators for Hinglish
-        hindi_score = sum(2 for indicator in hindi_indicators if indicator in text_lower)
-        tamil_score = sum(2 for indicator in tamil_indicators if indicator in text_lower)
-        
-        # Additional Hindi-specific patterns for Hinglish
-        hindi_patterns = [
-            r'\b[a-z]+ne\b',     # peene, karne, etc.
-            r'\b[a-z]+a\b',      # ja, gaya, etc.
-            r'\b[a-z]+i\b',      # thi, gai, etc.
-            r'\b[a-z]+e\b',      # peene, jaane, etc.
-            r'\b[a-z]+hu\b',     # hu, rahu, etc.
-            r'\bmai[n]?\b',      # mai, main
-            r'\bpaani\b',        # pani/paani
-            r'\bja\b'            # ja
-        ]
-        
-        # Additional Tamil-specific patterns
-        tamil_patterns = [
-            r'\b[a-z]+nga\b',  # avanga, ponga, etc.
-            r'\b[a-z]+n\b',    # naan, poren, etc.
-            r'\b[a-z]+u\b',    # irukku, sollu, etc.
-            r'\b[a-z]+a\b'     # vandha, irundha, etc.
-        ]
-        
-        # Check for Hindi-specific patterns
-        for pattern in hindi_patterns:
-            import re
-            if re.search(pattern, text_lower):
-                hindi_score += 3
-        
-        # Check for Tamil-specific patterns
-        for pattern in tamil_patterns:
-            import re
-            if re.search(pattern, text_lower):
-                tamil_score += 2
-        
-        # Hindi-specific endings with high weight
-        hindi_endings = ['hai', 'tha', 'thi', 'the', 'raha', 'rahi', 'rahe', 'gaya', 'gayi', 'gaye', 'hu', 'hun', 'hoon']
-        for ending in hindi_endings:
-            if text_lower.endswith(ending):
-                hindi_score += 4
-        
-        # Tamil-specific endings
-        tamil_endings = ['irukku', 'poren', 'vandha', 'sollu', 'romba']
-        for ending in tamil_endings:
-            if text_lower.endswith(ending):
-                tamil_score += 3
-        
-        # Determine language based on highest score
-        if hindi_score > tamil_score and hindi_score >= 5:
-            return 'hi'  # Hindi
-        elif tamil_score > hindi_score and tamil_score >= 5:
-            return 'ta'  # Tamil
-        elif hindi_score > 0 or tamil_score > 0:
-            # For close scores, use more specific patterns
-            if any(word in text_lower for word in ['naan', 'eppadi', 'irukku', 'romba']):
-                return 'ta'
-            elif any(word in text_lower for word in ['hai', 'mera', 'kya', 'main', 'mai', 'paani', 'peene']):
-                return 'hi'
-        
-        return None
-    
-    @staticmethod
-    def convert_to_native(text: str, detected_lang: str) -> str:
-        """Convert English transliteration to native script"""
-        if not INDIC_TRANSLITERATION_AVAILABLE:
-            return text
-            
-        try:
-            if detected_lang == 'hi':
-                # Convert to Devanagari (Hindi)
-                return transliterate(text, sanscript.ITRANS, sanscript.DEVANAGARI)
-            elif detected_lang == 'ta':
-                # Convert to Tamil
-                return transliterate(text, sanscript.ITRANS, sanscript.TAMIL)
-            elif detected_lang == 'te':
-                # Convert to Telugu
-                return transliterate(text, sanscript.ITRANS, sanscript.TELUGU)
-            elif detected_lang == 'ml':
-                # Convert to Malayalam
-                return transliterate(text, sanscript.ITRANS, sanscript.MALAYALAM)
-            elif detected_lang == 'kn':
-                # Convert to Kannada
-                return transliterate(text, sanscript.ITRANS, sanscript.KANNADA)
-            elif detected_lang == 'bn':
-                # Convert to Bengali
-                return transliterate(text, sanscript.ITRANS, sanscript.BENGALI)
-            elif detected_lang == 'gu':
-                # Convert to Gujarati
-                return transliterate(text, sanscript.ITRANS, sanscript.GUJARATI)
-            elif detected_lang == 'mr':
-                # Convert to Devanagari (Marathi)
-                return transliterate(text, sanscript.ITRANS, sanscript.DEVANAGARI)
-            elif detected_lang == 'pa':
-                # Convert to Gurmukhi (Punjabi)
-                return transliterate(text, sanscript.ITRANS, sanscript.GURMUKHI)
-            else:
-                return text
-        except Exception as e:
-            logging.warning(f"Transliteration failed: {e}")
