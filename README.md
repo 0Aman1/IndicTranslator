@@ -502,7 +502,7 @@ This project uses several open-source libraries:
 - **Google Translate**: Neural Machine Translation research
 
 ---
-
+## Project is live on https://huggingface.co/spaces/0UNknowN1/Indic-Translator
 ## 📞 Support and Contact
 
 For support, questions, or collaboration:
