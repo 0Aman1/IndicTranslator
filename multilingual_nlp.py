@@ -13,8 +13,7 @@ warnings.filterwarnings("ignore")
 from langdetect import detect
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForSeq2SeqLM
 import torch
-import googletrans
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 
 # Add indic-transliteration for romanization
 try:
@@ -119,40 +118,25 @@ class SentimentAnalyzer:
             return {"sentiment": "neutral", "confidence": 0.0, "error": str(e)}
 
 class TranslatorModule:
-    """Translation module using Google Translate API."""
+    """Translation module using deep-translator."""
     
     def __init__(self):
         pass
     
     def translate_text(self, text: str, source_lang: str, target_lang: str) -> str:
-        """Translate text using Google Translate API."""
+        """Translate text using deep-translator API."""
         try:
-            # Using requests to call Google Translate API directly
-            import requests
-            import urllib.parse
+            # Ensure source lang is recognized by deep_translator
+            sl = 'auto' if source_lang == 'en' else source_lang
+            translated_text = GoogleTranslator(source=sl, target=target_lang).translate(text)
             
-            url = "https://translate.googleapis.com/translate_a/single"
-            params = {
-                'client': 'gtx',
-                'sl': source_lang,
-                'tl': target_lang,
-                'dt': 't',
-                'q': text
-            }
-            
-            response = requests.get(url, params=params, timeout=10)
-            if response.status_code == 200:
-                result = response.json()
-                if result and len(result) > 0 and len(result[0]) > 0:
-                    translated_text = ''.join([item[0] for item in result[0]])
-                    return translated_text
-            
+            if translated_text:
+                return translated_text
             return f"[{text}] (Translation unavailable)"
             
         except Exception as e:
             logger.error(f"Translation failed: {e}")
             return f"[{text}] (Translation error)"
-
 class RomanizerModule:
     """Romanization module using indic-transliteration."""
     
