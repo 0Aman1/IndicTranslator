@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore")
 from langdetect import detect
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
-from deep_translator import GoogleTranslator
+from deep_translator import GoogleTranslator, MyMemoryTranslator
 
 # Add indic-transliteration for romanization
 try:
@@ -121,10 +121,14 @@ class TranslatorModule:
     """Translation module using deep-translator."""
     
     def __init__(self):
-        pass
+        self.mymemory_lang_map = {
+            'en': 'en-GB', 'hi': 'hi-IN', 'ta': 'ta-IN', 'te': 'te-IN',
+            'ml': 'ml-IN', 'kn': 'kn-IN', 'bn': 'bn-IN', 'gu': 'gu-IN',
+            'mr': 'mr-IN', 'pa': 'pa-IN'
+        }
     
     def translate_text(self, text: str, source_lang: str, target_lang: str) -> str:
-        """Translate text using deep-translator API."""
+        """Translate text using deep-translator API with fallback."""
         try:
             sl = 'auto' if source_lang == 'en' else source_lang
             translated_text = GoogleTranslator(source=sl, target=target_lang).translate(text)
@@ -134,8 +138,19 @@ class TranslatorModule:
             return f"[{text}] (Translation unavailable)"
             
         except Exception as e:
-            logger.error(f"Translation failed: {e}")
-            return f"[{text}] (Translation error)"
+            logger.warning(f"GoogleTranslator failed: {e}. Trying fallback MyMemoryTranslator...")
+            try:
+                # Fallback to MyMemoryTranslator
+                sl_my = self.mymemory_lang_map.get(source_lang, 'en-GB') if source_lang != 'auto' else 'en-GB'
+                tl_my = self.mymemory_lang_map.get(target_lang, target_lang)
+                
+                translated_text = MyMemoryTranslator(source=sl_my, target=tl_my).translate(text)
+                if translated_text:
+                    return translated_text
+                return f"[{text}] (Translation unavailable)"
+            except Exception as fallback_e:
+                logger.error(f"Fallback translation failed: {fallback_e}")
+                return f"[{text}] (Translation error)"
 
 class TransliterationDetector:
     """Detects and converts English-keyboard transliteration to native scripts"""
